@@ -7,17 +7,24 @@ from datetime import datetime
 st.set_page_config(page_title="RoomieSync", page_icon="🏠")
 st.title("🏠 RoomieSync: Reservas")
 
-# TU ID DE LA HOJA NUEVA
+# TU ID DE LA HOJA
 SHEET_ID = "1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc"
+HOJA_NOMBRE = "Reservas"  # ¡Importante! Coincide con tu pestaña de Excel
 
-# 1. CONEXIÓN (Llamamos a "gsheets")
+# 1. CONEXIÓN
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    df = conn.read(spreadsheet=SHEET_ID, ttl=0)
+    # Especificamos la hoja exacta para evitar errores de "Response 200"
+    df = conn.read(spreadsheet=SHEET_ID, worksheet=HOJA_NOMBRE, ttl=0)
 except Exception as e:
-    st.error(f"⚠️ Error de conexión: {e}")
-    st.info("Si ves esto, asegúrate de haber hecho el REBOOT manual desde el menú de la App.")
-    st.stop()
+    # Si el error es "Response [200]", en realidad es que está vacío o cargando
+    if "200" in str(e):
+        st.warning("⚠️ La conexión es correcta, pero Google está terminando de despertar.")
+        st.info("Por favor, espera 1 minuto más y dale a Reboot. ¡Ya casi estamos!")
+        st.stop()
+    else:
+        st.error(f"⚠️ Error de conexión: {e}")
+        st.stop()
 
 # 2. LIMPIEZA
 if not df.empty:
@@ -66,7 +73,7 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
                     updated_df = pd.concat([df, new_booking], ignore_index=True)
                 
                 try:
-                    conn.update(spreadsheet=SHEET_ID, data=updated_df)
+                    conn.update(spreadsheet=SHEET_ID, worksheet=HOJA_NOMBRE, data=updated_df)
                     st.success("¡Reserva guardada con éxito!")
                     st.rerun()
                 except Exception as e:
@@ -92,13 +99,13 @@ if not df.empty and 'startDate' in df.columns:
     
     if not df_sorted.reset_index(drop=True).equals(edited_df.reset_index(drop=True)):
         try:
-            conn.update(spreadsheet=SHEET_ID, data=edited_df)
+            conn.update(spreadsheet=SHEET_ID, worksheet=HOJA_NOMBRE, data=edited_df)
             st.success("Tabla actualizada.")
             st.rerun()
         except Exception as e:
             st.error(f"Error al actualizar: {e}")
 else:
-    st.info("No hay reservas todavía.")
+    st.info("No hay reservas todavía. ¡Estrena la lista!")
 
 if not df.empty and 'price' in df.columns:
     st.markdown("---")
