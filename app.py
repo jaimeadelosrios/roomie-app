@@ -7,20 +7,25 @@ from datetime import datetime
 st.set_page_config(page_title="RoomieSync", page_icon="🏠")
 st.title("🏠 RoomieSync: Reservas")
 
-# --- CONFIGURACIÓN DE CONEXIÓN ---
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc/edit?usp=sharing"
+# --- LA DIRECCIÓN MAESTRA (La ponemos aquí para que no falle nunca) ---
+SHEET_URL = "https://docs.google.com/spreadsheets/d/15tqsksP9b3d2YmLl-bQsEXTySdWSZ5Gz98_h4kiUrWs"
 HOJA_NOMBRE = "Reservas"
 
+# 1. CONEXIÓN
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    # Leemos con ttl=0 para que no guarde basura en memoria
+    # Leemos especificando URL y Hoja
     df = conn.read(spreadsheet=SHEET_URL, worksheet=HOJA_NOMBRE, ttl=0)
 except Exception as e:
-    st.error(f"⚠️ Error de conexión: {e}")
+    st.error(f"⚠️ Error de conexión inicial: {e}")
     st.stop()
 
-# --- LIMPIEZA DE DATOS ---
-if not df.empty:
+# 2. LIMPIEZA DE DATOS
+# Si la hoja está vacía (como acabamos de hacer), creamos la estructura base
+if df.empty:
+    df = pd.DataFrame(columns=['id', 'guestName', 'startDate', 'endDate', 'guests', 'price', 'isTaoFamily', 'checkInTime'])
+else:
+    # Si hay datos, aseguramos formatos
     for col in ['startDate', 'endDate']:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
@@ -32,7 +37,7 @@ if not df.empty:
     
     df = df.fillna("")
 
-# --- FORMULARIO ---
+# 3. FORMULARIO
 with st.expander("➕ Añadir Nueva Reserva", expanded=True):
     with st.form("booking_form"):
         col1, col2 = st.columns(2)
@@ -62,12 +67,18 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
                     "checkInTime": "14:00"
                 }])
                 
+                # Concatenamos
                 updated_df = pd.concat([df, new_booking], ignore_index=True)
-                conn.update(spreadsheet=SHEET_URL, worksheet=HOJA_NOMBRE, data=updated_df)
-                st.success("¡Guardado!")
-                st.rerun()
+                
+                # GUARDADO BLINDADO: Le damos la URL y la Hoja explícitamente
+                try:
+                    conn.update(spreadsheet=SHEET_URL, worksheet=HOJA_NOMBRE, data=updated_df)
+                    st.success("¡Reserva guardada con éxito!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al guardar: {e}")
 
-# --- TABLA ---
+# 4. TABLA
 st.subheader("📅 Reservas Activas")
 if not df.empty and 'startDate' in df.columns:
     df_sorted = df.sort_values(by="startDate")
@@ -86,11 +97,12 @@ if not df.empty and 'startDate' in df.columns:
     )
     
     if not df_sorted.reset_index(drop=True).equals(edited_df.reset_index(drop=True)):
-        conn.update(spreadsheet=SHEET_URL, worksheet=HOJA_NOMBRE, data=edited_df)
-        st.success("Tabla actualizada.")
-        st.rerun()
-else:
-    st.info("No hay reservas o no coinciden las columnas del Excel.")
+        try:
+            conn.update(spreadsheet=SHEET_URL, worksheet=HOJA_NOMBRE, data=edited_df)
+            st.success("Tabla actualizada.")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error al actualizar tabla: {e}")
 
 # Footer
 if not df.empty and 'price' in df.columns:
