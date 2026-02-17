@@ -1,12 +1,12 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 
-st.title("🕵️‍♂️ Inspector Final")
+st.title("🕵️‍♂️ Inspector Básico")
 
-# Verificamos si al borrar el espacio ya lo detecta
+st.write("Contenido bruto de los secretos:")
+st.write(st.secrets)
+
 if "connections" in st.secrets and "gsheets" in st.secrets.connections:
-    st.balloons()
-    st.success("✅ ¡BINGO! ¡YA TENEMOS LAS LLAVES!")
-    st.write("Ahora la App ya sabe quién es el robot. Puedes poner el código de reservas.")
+    st.success("✅ ¡CONEXIÓN DETECTADA!")
+    st.write(f"Dato de prueba: {st.secrets.connections.gsheets.get('prueba', 'No leído')}")
 else:
-    st.error("❌ SIGUE SIN VERLO. Asegúrate de que la primera línea es '[connections.gsheets]' totalmente pegada a la izquierda.")
+    st.error("❌ SIGUE CIEGO. El problema es tu navegador o el editor.")
