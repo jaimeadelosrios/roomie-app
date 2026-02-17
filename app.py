@@ -7,14 +7,16 @@ from datetime import datetime
 st.set_page_config(page_title="RoomieSync", page_icon="🏠")
 st.title("🏠 RoomieSync: Reservas")
 
-# --- VARIABLES MAESTRAS ---
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc/edit?usp=sharing"
+# --- USAMOS EL ID (LA MATRÍCULA) EN VEZ DEL ENLACE COMPLETO ---
+# Esto evita el error 400 Bad Request
+SHEET_ID = "15tqsksP9b3d2YmLl-bQsEXTySdWSZ5Gz98_h4kiUrWs"
 HOJA_NOMBRE = "Reservas"
 
 # 1. CONEXIÓN
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    df = conn.read(spreadsheet=SHEET_URL, worksheet=HOJA_NOMBRE, ttl=0)
+    # Usamos el ID directamente
+    df = conn.read(spreadsheet=SHEET_ID, worksheet=HOJA_NOMBRE, ttl=0)
 except Exception as e:
     st.error(f"⚠️ Error de conexión inicial: {e}")
     st.stop()
@@ -65,7 +67,8 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
                 updated_df = pd.concat([df, new_booking], ignore_index=True)
                 
                 try:
-                    conn.update(spreadsheet=SHEET_URL, worksheet=HOJA_NOMBRE, data=updated_df)
+                    # Guardamos usando el ID
+                    conn.update(spreadsheet=SHEET_ID, worksheet=HOJA_NOMBRE, data=updated_df)
                     st.success("¡Reserva guardada!")
                     st.rerun()
                 except Exception as e:
@@ -91,7 +94,7 @@ if not df.empty and 'startDate' in df.columns:
     
     if not df_sorted.reset_index(drop=True).equals(edited_df.reset_index(drop=True)):
         try:
-            conn.update(spreadsheet=SHEET_URL, worksheet=HOJA_NOMBRE, data=edited_df)
+            conn.update(spreadsheet=SHEET_ID, worksheet=HOJA_NOMBRE, data=edited_df)
             st.success("Tabla actualizada.")
             st.rerun()
         except Exception as e:
