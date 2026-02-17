@@ -7,22 +7,22 @@ from datetime import datetime
 st.set_page_config(page_title="RoomieSync", page_icon="🏠")
 st.title("🏠 RoomieSync: Reservas")
 
-# --- LA DIRECCIÓN MAESTRA (La ponemos aquí para que no falle nunca) ---
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc/edit?gid=0#gid=0"
+# --- ENLACE Y HOJA (AQUÍ ES DONDE MANDA) ---
+SHEET_URL = "https://docs.google.com/spreadsheets/d/15tqsksP9b3d2YmLl-bQsEXTySdWSZ5Gz98_h4kiUrWs"
 HOJA_NOMBRE = "Reservas"
 
 # 1. CONEXIÓN
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    # Leemos especificando URL y Hoja
+    # Leemos la hoja
     df = conn.read(spreadsheet=SHEET_URL, worksheet=HOJA_NOMBRE, ttl=0)
 except Exception as e:
     st.error(f"⚠️ Error de conexión inicial: {e}")
     st.stop()
 
-# 2. LIMPIEZA DE DATOS
-# Si la hoja está vacía (como acabamos de hacer), creamos la estructura base
+# 2. LIMPIEZA / INICIALIZACIÓN
 if df.empty:
+    # Si está vacía, creamos las columnas para que no falle
     df = pd.DataFrame(columns=['id', 'guestName', 'startDate', 'endDate', 'guests', 'price', 'isTaoFamily', 'checkInTime'])
 else:
     # Si hay datos, aseguramos formatos
@@ -67,13 +67,12 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
                     "checkInTime": "14:00"
                 }])
                 
-                # Concatenamos
                 updated_df = pd.concat([df, new_booking], ignore_index=True)
                 
-                # GUARDADO BLINDADO: Le damos la URL y la Hoja explícitamente
+                # GUARDAMOS usando el enlace explícito
                 try:
                     conn.update(spreadsheet=SHEET_URL, worksheet=HOJA_NOMBRE, data=updated_df)
-                    st.success("¡Reserva guardada con éxito!")
+                    st.success("¡Reserva guardada!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error al guardar: {e}")
@@ -102,7 +101,7 @@ if not df.empty and 'startDate' in df.columns:
             st.success("Tabla actualizada.")
             st.rerun()
         except Exception as e:
-            st.error(f"Error al actualizar tabla: {e}")
+            st.error(f"Error al actualizar: {e}")
 
 # Footer
 if not df.empty and 'price' in df.columns:
