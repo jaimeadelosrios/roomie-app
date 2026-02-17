@@ -8,14 +8,12 @@ st.set_page_config(page_title="RoomieSync", page_icon="🏠")
 st.title("🏠 RoomieSync: Reservas")
 
 # --- CONFIGURACIÓN DE CONEXIÓN ---
-# 1. Tu enlace (verifica que sea el correcto)
 SHEET_URL = "https://docs.google.com/spreadsheets/d/15tqsksP9b3d2YmLl-bQsEXTySdWSZ5Gz98_h4kiUrWs"
-# 2. El nombre EXACTO de la pestaña abajo en tu Excel (cámbialo si es "Sheet1" u "Hoja1")
 HOJA_NOMBRE = "Reservas"
 
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    # Leemos especificando la hoja exacta para no perdernos
+    # Leemos con ttl=0 para que no guarde basura en memoria
     df = conn.read(spreadsheet=SHEET_URL, worksheet=HOJA_NOMBRE, ttl=0)
 except Exception as e:
     st.error(f"⚠️ Error de conexión: {e}")
@@ -23,7 +21,6 @@ except Exception as e:
 
 # --- LIMPIEZA DE DATOS ---
 if not df.empty:
-    # Convertimos fechas y números para evitar errores
     for col in ['startDate', 'endDate']:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
@@ -65,7 +62,6 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
                     "checkInTime": "14:00"
                 }])
                 
-                # Unimos y guardamos ESPECIFICANDO LA HOJA
                 updated_df = pd.concat([df, new_booking], ignore_index=True)
                 conn.update(spreadsheet=SHEET_URL, worksheet=HOJA_NOMBRE, data=updated_df)
                 st.success("¡Guardado!")
