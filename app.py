@@ -8,7 +8,7 @@ st.set_page_config(page_title="RoomieSync", page_icon="🏠")
 st.title("🏠 RoomieSync: Reservas")
 
 # --- CONFIGURACIÓN DE CONEXIÓN ---
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc/edit?gid=0#gid=0"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/15tqsksP9b3d2YmLl-bQsEXTySdWSZ5Gz98_h4kiUrWs"
 HOJA_NOMBRE = "Reservas"
 
 try:
