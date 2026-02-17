@@ -171,19 +171,19 @@ else:
     df_sorted = df
 
 # -------------------------------------------
-        edited_df = st.data_editor(
-            df_sorted,
-            num_rows="dynamic",
-            use_container_width=True,
-            column_config={
-                "Guest": st.column_config.TextColumn("Nombre", width="medium", required=True),
-                "Start": st.column_config.DateColumn("Entrada", format="DD/MM/YYYY"),
-                "End": st.column_config.DateColumn("Salida", format="DD/MM/YYYY"),
-                "Time": st.column_config.TimeColumn("Hora", format="HH:mm"),
-                "Price": st.column_config.NumberColumn("€", format="%d €"),
-                "IsTao": st.column_config.CheckboxColumn("⭐", width="small"),
-                "Notes": st.column_config.TextColumn("Notas", width="small"),
-                "Guests": st.column_config.NumberColumn("Pers.", min_value=1, max_value=4)
+edited_df = st.data_editor(
+df_sorted,
+num_rows="dynamic",
+use_container_width=True,
+column_config={
+"Guest": st.column_config.TextColumn("Nombre", width="medium", required=True),
+"Start": st.column_config.DateColumn("Entrada", format="DD/MM/YYYY"),
+"End": st.column_config.DateColumn("Salida", format="DD/MM/YYYY"),
+"Time": st.column_config.TimeColumn("Hora", format="HH:mm"),
+"Price": st.column_config.NumberColumn("€", format="%d €"),
+"IsTao": st.column_config.CheckboxColumn("⭐", width="small"),
+"Notes": st.column_config.TextColumn("Notas", width="small"),
+"Guests": st.column_config.NumberColumn("Pers.", min_value=1, max_value=4)
             },
             hide_index=True
         )
