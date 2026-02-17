@@ -7,34 +7,29 @@ from datetime import datetime
 st.set_page_config(page_title="RoomieSync", page_icon="🏠")
 st.title("🏠 RoomieSync: Reservas")
 
-# --- ENLACE Y HOJA (AQUÍ ES DONDE MANDA) ---
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc/edit?gid=0#gid=0"
+# --- VARIABLES MAESTRAS ---
+SHEET_URL = "https://docs.google.com/spreadsheets/d/15tqsksP9b3d2YmLl-bQsEXTySdWSZ5Gz98_h4kiUrWs"
 HOJA_NOMBRE = "Reservas"
 
 # 1. CONEXIÓN
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    # Leemos la hoja
     df = conn.read(spreadsheet=SHEET_URL, worksheet=HOJA_NOMBRE, ttl=0)
 except Exception as e:
     st.error(f"⚠️ Error de conexión inicial: {e}")
     st.stop()
 
-# 2. LIMPIEZA / INICIALIZACIÓN
+# 2. LIMPIEZA
 if df.empty:
-    # Si está vacía, creamos las columnas para que no falle
     df = pd.DataFrame(columns=['id', 'guestName', 'startDate', 'endDate', 'guests', 'price', 'isTaoFamily', 'checkInTime'])
 else:
-    # Si hay datos, aseguramos formatos
     for col in ['startDate', 'endDate']:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
-    
     if 'price' in df.columns:
         df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
     if 'guests' in df.columns:
         df['guests'] = pd.to_numeric(df['guests'], errors='coerce').fillna(1)
-    
     df = df.fillna("")
 
 # 3. FORMULARIO
@@ -69,7 +64,6 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
                 
                 updated_df = pd.concat([df, new_booking], ignore_index=True)
                 
-                # GUARDAMOS usando el enlace explícito
                 try:
                     conn.update(spreadsheet=SHEET_URL, worksheet=HOJA_NOMBRE, data=updated_df)
                     st.success("¡Reserva guardada!")
@@ -103,7 +97,6 @@ if not df.empty and 'startDate' in df.columns:
         except Exception as e:
             st.error(f"Error al actualizar: {e}")
 
-# Footer
 if not df.empty and 'price' in df.columns:
     st.markdown("---")
     st.metric("Hucha Total", f"{df['price'].sum()} €")
