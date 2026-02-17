@@ -154,6 +154,23 @@ with tab_home:
         df_sorted = df.sort_values(by="Start", ascending=True)
         
         # Usamos data_editor para permitir borrar/editar directamente
+        # Aseguramos que si la hoja está vacía o tiene datos sucios, no rompa la app
+if not df.empty:
+    # Convertimos las columnas de fecha a formato fecha real
+    df['startDate'] = pd.to_datetime(df['startDate'], errors='coerce').dt.date
+    df['endDate'] = pd.to_datetime(df['endDate'], errors='coerce').dt.date
+    
+    # Aseguramos que los números sean números
+    df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
+    df['guests'] = pd.to_numeric(df['guests'], errors='coerce').fillna(1)
+
+# Ordenamos solo si hay fechas válidas
+if 'startDate' in df.columns and not df.empty:
+    df_sorted = df.sort_values(by='startDate')
+else:
+    df_sorted = df
+
+# -------------------------------------------
         edited_df = st.data_editor(
             df_sorted,
             num_rows="dynamic",
