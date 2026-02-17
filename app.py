@@ -10,7 +10,7 @@ st.title("🏠 RoomieSync: Reservas")
 
 # 1. CONEXIÓN A GOOGLE SHEETS
 # Ponemos el enlace aquí directamente para que no falle
-SHEET_URL = "https://docs.google.com/spreadsheets/d/15tqsksP9b3d2YmLl-bQsEXTySdWSZ5Gz98_h4kiUrWs"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc/edit?gid=0#gid=0"
 
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
