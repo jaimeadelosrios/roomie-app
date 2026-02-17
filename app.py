@@ -3,17 +3,16 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 
-# Configuración
 st.set_page_config(page_title="RoomieSync", page_icon="🏠")
 st.title("🏠 RoomieSync: Reservas")
 
 # ID DE LA HOJA NUEVA
 SHEET_ID = "1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc"
 
-# 1. CONEXIÓN ESTÁNDAR
+# 1. CONEXIÓN DEFINITIVA (Llamamos a "final" para forzar el modo Trabajador)
 try:
-    # Volvemos a usar el nombre estándar "gsheets" que coincide con los secrets
-    conn = st.connection("gsheets", type=GSheetsConnection)
+    # IMPORTANTE: Aquí debe decir "final" para coincidir con los Secrets
+    conn = st.connection("final", type=GSheetsConnection)
     df = conn.read(spreadsheet=SHEET_ID, ttl=0)
 except Exception as e:
     st.error(f"⚠️ Error de conexión: {e}")
@@ -49,7 +48,6 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
             if not name:
                 st.warning("Falta el nombre.")
             else:
-                # Creamos la nueva fila
                 new_booking = pd.DataFrame([{
                     "id": str(datetime.now().timestamp()), 
                     "guestName": name,
@@ -61,19 +59,19 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
                     "checkInTime": "14:00"
                 }])
                 
-                # Unimos con lo existente (si hay algo)
+                # Si la hoja está vacía, new_booking es el inicio
                 if df.empty:
                     updated_df = new_booking
                 else:
                     updated_df = pd.concat([df, new_booking], ignore_index=True)
                 
                 try:
-                    # Al guardar, el robot usará las credenciales de "gsheets"
+                    # Guardamos usando la conexión "final"
                     conn.update(spreadsheet=SHEET_ID, data=updated_df)
                     st.success("¡Reserva guardada con éxito!")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Error al guardar. Asegúrate de que los encabezados (id, guestName...) están en la Fila 1 del Excel. Detalles: {e}")
+                    st.error(f"Error al guardar: {e}")
 
 # 4. TABLA
 st.subheader("📅 Reservas Activas")
@@ -101,9 +99,8 @@ if not df.empty and 'startDate' in df.columns:
         except Exception as e:
             st.error(f"Error al actualizar: {e}")
 else:
-    st.info("Lista vacía. Añade la primera reserva arriba.")
+    st.info("No hay reservas todavía.")
 
-# Footer
 if not df.empty and 'price' in df.columns:
     st.markdown("---")
     st.metric("Hucha Total", f"{df['price'].sum()} €")
