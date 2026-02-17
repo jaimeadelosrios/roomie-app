@@ -6,13 +6,12 @@ from datetime import datetime
 st.set_page_config(page_title="RoomieSync", page_icon="🏠")
 st.title("🏠 RoomieSync: Reservas")
 
-# ID DE LA HOJA NUEVA
+# TU ID DE LA HOJA NUEVA
 SHEET_ID = "1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc"
 
-# 1. CONEXIÓN DEFINITIVA (Llamamos a "final" para forzar el modo Trabajador)
+# 1. CONEXIÓN (Llamamos explícitamente a "gsheets" para que lea los Secrets correctos)
 try:
-    # IMPORTANTE: Aquí debe decir "final" para coincidir con los Secrets
-    conn = st.connection("final", type=GSheetsConnection)
+    conn = st.connection("gsheets", type=GSheetsConnection)
     df = conn.read(spreadsheet=SHEET_ID, ttl=0)
 except Exception as e:
     st.error(f"⚠️ Error de conexión: {e}")
@@ -59,14 +58,14 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
                     "checkInTime": "14:00"
                 }])
                 
-                # Si la hoja está vacía, new_booking es el inicio
+                # Gestión de DataFrame vacío o lleno
                 if df.empty:
                     updated_df = new_booking
                 else:
                     updated_df = pd.concat([df, new_booking], ignore_index=True)
                 
                 try:
-                    # Guardamos usando la conexión "final"
+                    # Al escribir, usamos la misma conexión "gsheets" verificada
                     conn.update(spreadsheet=SHEET_ID, data=updated_df)
                     st.success("¡Reserva guardada con éxito!")
                     st.rerun()
