@@ -1,12 +1,12 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 
-st.title("🕵️‍♂️ Inspector de Llaves - Intento 2")
+st.title("🕵️‍♂️ Inspector Final")
 
-# Verificamos si la reparación funcionó
+# Verificamos si al borrar el espacio ya lo detecta
 if "connections" in st.secrets and "gsheets" in st.secrets.connections:
-    st.success("✅ ¡AHORA SÍ! La App ha encontrado las llaves.")
-    st.write("Ahora sí puedes volver a poner el código de reservas.")
+    st.balloons()
+    st.success("✅ ¡BINGO! ¡YA TENEMOS LAS LLAVES!")
+    st.write("Ahora la App ya sabe quién es el robot. Puedes poner el código de reservas.")
 else:
-    st.error("❌ SIGUE CIEGA. El problema está en el formato del texto en Secrets.")
-    st.write("Por favor, mándame una captura de pantalla de cómo se ve tu caja de Secrets.")
+    st.error("❌ SIGUE SIN VERLO. Asegúrate de que la primera línea es '[connections.gsheets]' totalmente pegada a la izquierda.")
