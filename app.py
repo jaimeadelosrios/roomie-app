@@ -1,102 +1,26 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
-import pandas as pd
-from datetime import datetime
 
-# Configuración de la página
-st.set_page_config(page_title="RoomieSync", page_icon="🏠")
-st.title("🏠 RoomieSync: Reservas")
+st.title("🕵️‍♂️ Test de Conexión")
 
-# --- ¡AQUÍ ESTÁ EL CAMBIO! TU ENLACE NUEVO ---
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc"
+# TU ID DE LA HOJA NUEVA (Matrícula exacta)
+SHEET_ID = "1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc"
 
-# 1. CONEXIÓN (Usamos "roomie" para evitar caché antigua)
 try:
+    # 1. Intentamos conectar
     conn = st.connection("roomie", type=GSheetsConnection)
-    # Leemos la hoja nueva
-    df = conn.read(spreadsheet=SHEET_URL, ttl=0)
+    
+    # 2. Intentamos leer
+    st.write(f"Intentando conectar a la hoja: `{SHEET_ID}`...")
+    df = conn.read(spreadsheet=SHEET_ID, ttl=0)
+    
+    # 3. Si llega aquí, es ÉXITO
+    st.success("✅ ¡CONEXIÓN ÉXITOSA! El robot ha entrado.")
+    st.write("Esto es lo que veo en la hoja:")
+    st.dataframe(df)
+
 except Exception as e:
-    st.error(f"⚠️ Error de conexión: {e}")
-    st.stop()
-
-# 2. LIMPIEZA DE DATOS
-if df.empty:
-    df = pd.DataFrame(columns=['id', 'guestName', 'startDate', 'endDate', 'guests', 'price', 'isTaoFamily', 'checkInTime'])
-else:
-    for col in ['startDate', 'endDate']:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
-    if 'price' in df.columns:
-        df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
-    if 'guests' in df.columns:
-        df['guests'] = pd.to_numeric(df['guests'], errors='coerce').fillna(1)
-    df = df.fillna("")
-
-# 3. FORMULARIO
-with st.expander("➕ Añadir Nueva Reserva", expanded=True):
-    with st.form("booking_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            name = st.text_input("Nombre del Huésped")
-            start = st.date_input("Llegada", min_value=datetime.today())
-            guests = st.number_input("Personas", min_value=1, max_value=4, value=1)
-        with col2:
-            price = st.number_input("Precio Total (€)", min_value=0.0, step=5.0)
-            end = st.date_input("Salida", min_value=datetime.today())
-            is_tao = st.checkbox("¿Es familia de TAO? ⭐")
-        
-        submitted = st.form_submit_button("Guardar Reserva")
-        
-        if submitted:
-            if not name:
-                st.warning("Falta el nombre.")
-            else:
-                new_booking = pd.DataFrame([{
-                    "id": str(datetime.now().timestamp()), 
-                    "guestName": name,
-                    "startDate": start,
-                    "endDate": end,
-                    "guests": guests,
-                    "price": price,
-                    "isTaoFamily": is_tao,
-                    "checkInTime": "14:00"
-                }])
-                
-                updated_df = pd.concat([df, new_booking], ignore_index=True)
-                
-                try:
-                    conn.update(spreadsheet=SHEET_URL, data=updated_df)
-                    st.success("¡Guardado!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error al guardar: {e}")
-
-# 4. TABLA
-st.subheader("📅 Reservas Activas")
-if not df.empty and 'startDate' in df.columns:
-    df_sorted = df.sort_values(by="startDate")
-    
-    edited_df = st.data_editor(
-        df_sorted,
-        column_config={
-            "startDate": st.column_config.DateColumn("Llegada", format="DD/MM/YYYY"),
-            "endDate": st.column_config.DateColumn("Salida", format="DD/MM/YYYY"),
-            "price": st.column_config.NumberColumn("Precio", format="%d €"), 
-            "id": None
-        },
-        num_rows="dynamic",
-        hide_index=True,
-        use_container_width=True
-    )
-    
-    if not df_sorted.reset_index(drop=True).equals(edited_df.reset_index(drop=True)):
-        try:
-            conn.update(spreadsheet=SHEET_URL, data=edited_df)
-            st.success("Tabla actualizada.")
-            st.rerun()
-        except Exception as e:
-            st.error(f"Error al actualizar: {e}")
-
-if not df.empty and 'price' in df.columns:
-    st.markdown("---")
-    st.metric("Hucha Total", f"{df['price'].sum()} €")
+    # 4. Si falla, nos dirá por qué
+    st.error("❌ EL ROBOT NO PUEDE ENTRAR.")
+    st.error(f"Mensaje técnico: {e}")
+    st.info("💡 PISTA: Si dice '404' o 'Permission denied', es que NO has invitado al email 'romiesync@...' a esta hoja nueva.")
