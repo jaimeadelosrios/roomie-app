@@ -9,7 +9,7 @@ st.title("🏠 RoomieSync: Reservas")
 
 # --- IMPORTANTE: TU ENLACE DE GOOGLE SHEETS ---
 # Pega aquí el enlace de la hoja que estés usando AHORA MISMO
-SHEET_URL = "https://docs.google.com/spreadsheets/d/15tqsksP9b3d2YmLl-bQsEXTySdWSZ5Gz98_h4kiUrWs"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc"
 
 # 1. CONEXIÓN (Llamamos a "roomie" porque así lo pusiste en Secrets)
 try:
