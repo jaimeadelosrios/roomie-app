@@ -7,7 +7,7 @@ st.set_page_config(page_title="RoomieSync", page_icon="🏠")
 st.title("🏠 RoomieSync: Reservas")
 
 # --- USAMOS LA URL LIMPIA ---
-SHEET_URL = "https://docs.google.com/spreadsheets/d/15tqsksP9b3d2YmLl-bQsEXTySdWSZ5Gz98_h4kiUrWs"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc/"
 
 # 1. CONEXIÓN NUEVA (Nombre cambiado a "roomie" para borrar caché)
 try:
