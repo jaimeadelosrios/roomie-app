@@ -3,50 +3,46 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 
-# Configuración básica de la página
+# Configuración básica
 st.set_page_config(page_title="RoomieSync", page_icon="🏠")
-
 st.title("🏠 RoomieSync: Reservas")
 
-# 1. CONEXIÓN A GOOGLE SHEETS
-# --- IMPORTANTE: ASEGÚRATE DE QUE ESTE ENLACE ES EL DE TU HOJA NUEVA ---
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc/edit?gid=0#gid=0" 
+# --- CONFIGURACIÓN DE CONEXIÓN ---
+# 1. Tu enlace (verifica que sea el correcto)
+SHEET_URL = "https://docs.google.com/spreadsheets/d/15tqsksP9b3d2YmLl-bQsEXTySdWSZ5Gz98_h4kiUrWs"
+# 2. El nombre EXACTO de la pestaña abajo en tu Excel (cámbialo si es "Sheet1" u "Hoja1")
+HOJA_NOMBRE = "Hoja 1"
 
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    # Le decimos explícitamente qué hoja leer
-    df = conn.read(spreadsheet=SHEET_URL, ttl=5)
+    # Leemos especificando la hoja exacta para no perdernos
+    df = conn.read(spreadsheet=SHEET_URL, worksheet=HOJA_NOMBRE, ttl=0)
 except Exception as e:
     st.error(f"⚠️ Error de conexión: {e}")
     st.stop()
 
-# 2. LIMPIEZA DE DATOS (Para evitar la Pantalla Roja)
+# --- LIMPIEZA DE DATOS ---
 if not df.empty:
-    # Convertimos fechas de texto a objetos de fecha reales
-    if 'startDate' in df.columns:
-        df['startDate'] = pd.to_datetime(df['startDate'], errors='coerce').dt.date
-    if 'endDate' in df.columns:
-        df['endDate'] = pd.to_datetime(df['endDate'], errors='coerce').dt.date
+    # Convertimos fechas y números para evitar errores
+    for col in ['startDate', 'endDate']:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
     
-    # Aseguramos que el precio y los invitados sean números
     if 'price' in df.columns:
         df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
     if 'guests' in df.columns:
         df['guests'] = pd.to_numeric(df['guests'], errors='coerce').fillna(1)
     
-    # Rellenamos huecos vacíos
     df = df.fillna("")
 
-# 3. FORMULARIO DE NUEVA RESERVA
+# --- FORMULARIO ---
 with st.expander("➕ Añadir Nueva Reserva", expanded=True):
     with st.form("booking_form"):
         col1, col2 = st.columns(2)
-        
         with col1:
             name = st.text_input("Nombre del Huésped")
             start = st.date_input("Llegada", min_value=datetime.today())
             guests = st.number_input("Personas", min_value=1, max_value=4, value=1)
-            
         with col2:
             price = st.number_input("Precio Total (€)", min_value=0.0, step=5.0)
             end = st.date_input("Salida", min_value=datetime.today())
@@ -56,9 +52,8 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
         
         if submitted:
             if not name:
-                st.warning("Por favor, pon un nombre.")
+                st.warning("Falta el nombre.")
             else:
-                # Preparamos la nueva fila
                 new_booking = pd.DataFrame([{
                     "id": str(datetime.now().timestamp()), 
                     "guestName": name,
@@ -70,19 +65,15 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
                     "checkInTime": "14:00"
                 }])
                 
-                # Unimos la nueva reserva con las anteriores
+                # Unimos y guardamos ESPECIFICANDO LA HOJA
                 updated_df = pd.concat([df, new_booking], ignore_index=True)
-                
-                # Guardamos en Google Sheets (AQUÍ ESTABA EL FALLO, AHORA YA TIENE LA URL)
-                conn.update(spreadsheet=SHEET_URL, data=updated_df)
-                st.success("¡Reserva guardada! Actualizando...")
+                conn.update(spreadsheet=SHEET_URL, worksheet=HOJA_NOMBRE, data=updated_df)
+                st.success("¡Guardado!")
                 st.rerun()
 
-# 4. TABLA DE RESERVAS (Editor)
+# --- TABLA ---
 st.subheader("📅 Reservas Activas")
-
 if not df.empty and 'startDate' in df.columns:
-    # Ordenamos por fecha de llegada
     df_sorted = df.sort_values(by="startDate")
     
     edited_df = st.data_editor(
@@ -90,26 +81,22 @@ if not df.empty and 'startDate' in df.columns:
         column_config={
             "startDate": st.column_config.DateColumn("Llegada", format="DD/MM/YYYY"),
             "endDate": st.column_config.DateColumn("Salida", format="DD/MM/YYYY"),
-            "price": st.column_config.NumberColumn("Precio", format="%d €"),
-            "isTaoFamily": st.column_config.CheckboxColumn("Familia TAO"),
-            "id": None 
+            "price": st.column_config.NumberColumn("Precio", format="%d €"), 
+            "id": None
         },
         num_rows="dynamic",
         hide_index=True,
         use_container_width=True
     )
     
-    # Detectar cambios manuales en la tabla y guardar
     if not df_sorted.reset_index(drop=True).equals(edited_df.reset_index(drop=True)):
-        # Guardamos cambios manuales (AQUÍ TAMBIÉN AÑADIMOS LA URL)
-        conn.update(spreadsheet=SHEET_URL, data=edited_df)
-        st.success("Cambios guardados en la tabla.")
+        conn.update(spreadsheet=SHEET_URL, worksheet=HOJA_NOMBRE, data=edited_df)
+        st.success("Tabla actualizada.")
         st.rerun()
 else:
-    st.info("Aún no hay reservas. ¡Añade la primera arriba!")
+    st.info("No hay reservas o no coinciden las columnas del Excel.")
 
-# Estadísticas rápidas (Footer)
+# Footer
 if not df.empty and 'price' in df.columns:
-    total_eur = df['price'].sum()
     st.markdown("---")
-    st.metric(label="Total Acumulado en la Hucha", value=f"{total_eur} €")
+    st.metric("Hucha Total", f"{df['price'].sum()} €")
