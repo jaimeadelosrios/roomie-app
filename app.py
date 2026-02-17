@@ -9,13 +9,12 @@ st.set_page_config(page_title="RoomieSync", page_icon="🏠")
 st.title("🏠 RoomieSync: Reservas")
 
 # 1. CONEXIÓN A GOOGLE SHEETS
-# Intentamos conectar. Si faltan los 'Secrets', avisamos amablemente.
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    # Leemos los datos. ttl=5 hace que se actualice cada 5 segundos si hay cambios
     df = conn.read(ttl=5)
 except Exception as e:
-    st.error("⚠️ Error de conexión. Asegúrate de haber configurado los 'Secrets' con tu archivo JSON de Google.")
+    # AQUI ESTÁ EL CAMBIO: Le decimos que imprima el error exacto
+    st.error(f"⚠️ Error detallado: {e}")
     st.stop()
 
 # 2. LIMPIEZA DE DATOS (Para evitar la Pantalla Roja)
