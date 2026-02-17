@@ -9,19 +9,18 @@ st.set_page_config(page_title="RoomieSync", page_icon="🏠")
 st.title("🏠 RoomieSync: Reservas")
 
 # 1. CONEXIÓN A GOOGLE SHEETS
-# Ponemos el enlace aquí directamente para que no falle
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc/edit?gid=0#gid=0"
+# --- IMPORTANTE: ASEGÚRATE DE QUE ESTE ENLACE ES EL DE TU HOJA NUEVA ---
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc/edit?gid=0#gid=0" 
 
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    # Le decimos explícitamente qué hoja leer usando la variable de arriba
+    # Le decimos explícitamente qué hoja leer
     df = conn.read(spreadsheet=SHEET_URL, ttl=5)
 except Exception as e:
-    st.error(f"⚠️ Error detallado: {e}")
+    st.error(f"⚠️ Error de conexión: {e}")
     st.stop()
 
 # 2. LIMPIEZA DE DATOS (Para evitar la Pantalla Roja)
-# Si la hoja está vacía o tiene datos raros, los arreglamos antes de mostrar nada
 if not df.empty:
     # Convertimos fechas de texto a objetos de fecha reales
     if 'startDate' in df.columns:
@@ -35,7 +34,7 @@ if not df.empty:
     if 'guests' in df.columns:
         df['guests'] = pd.to_numeric(df['guests'], errors='coerce').fillna(1)
     
-    # Rellenamos huecos vacíos en otras columnas para que no den error
+    # Rellenamos huecos vacíos
     df = df.fillna("")
 
 # 3. FORMULARIO DE NUEVA RESERVA
@@ -61,21 +60,21 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
             else:
                 # Preparamos la nueva fila
                 new_booking = pd.DataFrame([{
-                    "id": str(datetime.now().timestamp()), # ID único basado en la hora
+                    "id": str(datetime.now().timestamp()), 
                     "guestName": name,
                     "startDate": start,
                     "endDate": end,
                     "guests": guests,
                     "price": price,
                     "isTaoFamily": is_tao,
-                    "checkInTime": "14:00" # Hora por defecto
+                    "checkInTime": "14:00"
                 }])
                 
                 # Unimos la nueva reserva con las anteriores
                 updated_df = pd.concat([df, new_booking], ignore_index=True)
                 
-                # Guardamos en Google Sheets
-                conn.update(data=updated_df)
+                # Guardamos en Google Sheets (AQUÍ ESTABA EL FALLO, AHORA YA TIENE LA URL)
+                conn.update(spreadsheet=SHEET_URL, data=updated_df)
                 st.success("¡Reserva guardada! Actualizando...")
                 st.rerun()
 
@@ -86,8 +85,6 @@ if not df.empty and 'startDate' in df.columns:
     # Ordenamos por fecha de llegada
     df_sorted = df.sort_values(by="startDate")
     
-    # Mostramos el editor
-    # Si editas algo aquí directamente, intentará actualizarse
     edited_df = st.data_editor(
         df_sorted,
         column_config={
@@ -95,16 +92,17 @@ if not df.empty and 'startDate' in df.columns:
             "endDate": st.column_config.DateColumn("Salida", format="DD/MM/YYYY"),
             "price": st.column_config.NumberColumn("Precio", format="%d €"),
             "isTaoFamily": st.column_config.CheckboxColumn("Familia TAO"),
-            "id": None # Ocultamos el ID para que no moleste
+            "id": None 
         },
-        num_rows="dynamic", # Permite añadir filas abajo
+        num_rows="dynamic",
         hide_index=True,
         use_container_width=True
     )
     
     # Detectar cambios manuales en la tabla y guardar
     if not df_sorted.reset_index(drop=True).equals(edited_df.reset_index(drop=True)):
-        conn.update(data=edited_df)
+        # Guardamos cambios manuales (AQUÍ TAMBIÉN AÑADIMOS LA URL)
+        conn.update(spreadsheet=SHEET_URL, data=edited_df)
         st.success("Cambios guardados en la tabla.")
         st.rerun()
 else:
