@@ -7,14 +7,13 @@ from datetime import datetime
 st.set_page_config(page_title="RoomieSync", page_icon="🏠")
 st.title("🏠 RoomieSync: Reservas")
 
-# --- IMPORTANTE: TU ENLACE DE GOOGLE SHEETS ---
-# Pega aquí el enlace de la hoja que estés usando AHORA MISMO
+# --- ¡AQUÍ ESTÁ EL CAMBIO! TU ENLACE NUEVO ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc"
 
-# 1. CONEXIÓN (Llamamos a "roomie" porque así lo pusiste en Secrets)
+# 1. CONEXIÓN (Usamos "roomie" para evitar caché antigua)
 try:
     conn = st.connection("roomie", type=GSheetsConnection)
-    # Leemos la primera hoja que encuentre (sin especificar nombre para evitar errores)
+    # Leemos la hoja nueva
     df = conn.read(spreadsheet=SHEET_URL, ttl=0)
 except Exception as e:
     st.error(f"⚠️ Error de conexión: {e}")
@@ -24,7 +23,6 @@ except Exception as e:
 if df.empty:
     df = pd.DataFrame(columns=['id', 'guestName', 'startDate', 'endDate', 'guests', 'price', 'isTaoFamily', 'checkInTime'])
 else:
-    # Aseguramos que las fechas sean fechas y los números sean números
     for col in ['startDate', 'endDate']:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
@@ -51,7 +49,7 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
         
         if submitted:
             if not name:
-                st.warning("Por favor, escribe un nombre.")
+                st.warning("Falta el nombre.")
             else:
                 new_booking = pd.DataFrame([{
                     "id": str(datetime.now().timestamp()), 
@@ -67,9 +65,8 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
                 updated_df = pd.concat([df, new_booking], ignore_index=True)
                 
                 try:
-                    # Guardamos usando la conexión "roomie"
                     conn.update(spreadsheet=SHEET_URL, data=updated_df)
-                    st.success("¡Reserva guardada con éxito!")
+                    st.success("¡Guardado!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error al guardar: {e}")
@@ -92,14 +89,13 @@ if not df.empty and 'startDate' in df.columns:
         use_container_width=True
     )
     
-    # Si detectamos cambios manuales en la tabla, guardamos
     if not df_sorted.reset_index(drop=True).equals(edited_df.reset_index(drop=True)):
         try:
             conn.update(spreadsheet=SHEET_URL, data=edited_df)
-            st.success("Tabla actualizada correctamente.")
+            st.success("Tabla actualizada.")
             st.rerun()
         except Exception as e:
-            st.error(f"Error al actualizar la tabla: {e}")
+            st.error(f"Error al actualizar: {e}")
 
 if not df.empty and 'price' in df.columns:
     st.markdown("---")
