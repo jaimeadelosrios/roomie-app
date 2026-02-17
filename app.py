@@ -9,11 +9,14 @@ st.set_page_config(page_title="RoomieSync", page_icon="🏠")
 st.title("🏠 RoomieSync: Reservas")
 
 # 1. CONEXIÓN A GOOGLE SHEETS
+# Ponemos el enlace aquí directamente para que no falle
+SHEET_URL = "https://docs.google.com/spreadsheets/d/15tqsksP9b3d2YmLl-bQsEXTySdWSZ5Gz98_h4kiUrWs"
+
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    df = conn.read(ttl=5)
+    # Le decimos explícitamente qué hoja leer usando la variable de arriba
+    df = conn.read(spreadsheet=SHEET_URL, ttl=5)
 except Exception as e:
-    # AQUI ESTÁ EL CAMBIO: Le decimos que imprima el error exacto
     st.error(f"⚠️ Error detallado: {e}")
     st.stop()
 
