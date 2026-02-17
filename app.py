@@ -9,7 +9,7 @@ st.title("🏠 RoomieSync: Reservas")
 
 # --- CONFIGURACIÓN DE CONEXIÓN ---
 # 1. Tu enlace (verifica que sea el correcto)
-SHEET_URL = "https://docs.google.com/spreadsheets/d/15tqsksP9b3d2YmLl-bQsEXTySdWSZ5Gz98_h4kiUrWs"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc/edit?gid=0#gid=0"
 # 2. El nombre EXACTO de la pestaña abajo en tu Excel (cámbialo si es "Sheet1" u "Hoja1")
 HOJA_NOMBRE = "Reservas"
 
