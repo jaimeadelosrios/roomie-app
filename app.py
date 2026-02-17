@@ -3,22 +3,21 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 
-# Configuración básica
 st.set_page_config(page_title="RoomieSync", page_icon="🏠")
 st.title("🏠 RoomieSync: Reservas")
 
-# --- USAMOS EL ID (LA MATRÍCULA) EN VEZ DEL ENLACE COMPLETO ---
-# Esto evita el error 400 Bad Request
-SHEET_ID = "15tqsksP9b3d2YmLl-bQsEXTySdWSZ5Gz98_h4kiUrWs"
-HOJA_NOMBRE = "Reservas"
+# --- USAMOS LA URL LIMPIA ---
+SHEET_URL = "https://docs.google.com/spreadsheets/d/15tqsksP9b3d2YmLl-bQsEXTySdWSZ5Gz98_h4kiUrWs"
 
-# 1. CONEXIÓN
+# 1. CONEXIÓN NUEVA (Nombre cambiado a "roomie" para borrar caché)
 try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    # Usamos el ID directamente
-    df = conn.read(spreadsheet=SHEET_ID, worksheet=HOJA_NOMBRE, ttl=0)
+    # Fíjate que aquí ahora llamamos a "roomie", no a "gsheets"
+    conn = st.connection("roomie", type=GSheetsConnection)
+    
+    # Leemos sin especificar hoja (cogerá la primera por defecto)
+    df = conn.read(spreadsheet=SHEET_URL, ttl=0)
 except Exception as e:
-    st.error(f"⚠️ Error de conexión inicial: {e}")
+    st.error(f"⚠️ Error de conexión: {e}")
     st.stop()
 
 # 2. LIMPIEZA
@@ -30,8 +29,6 @@ else:
             df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
     if 'price' in df.columns:
         df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
-    if 'guests' in df.columns:
-        df['guests'] = pd.to_numeric(df['guests'], errors='coerce').fillna(1)
     df = df.fillna("")
 
 # 3. FORMULARIO
@@ -39,19 +36,17 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
     with st.form("booking_form"):
         col1, col2 = st.columns(2)
         with col1:
-            name = st.text_input("Nombre del Huésped")
+            name = st.text_input("Nombre")
             start = st.date_input("Llegada", min_value=datetime.today())
-            guests = st.number_input("Personas", min_value=1, max_value=4, value=1)
+            guests = st.number_input("Personas", 1, 4, 1)
         with col2:
-            price = st.number_input("Precio Total (€)", min_value=0.0, step=5.0)
+            price = st.number_input("Precio (€)", 0.0, step=5.0)
             end = st.date_input("Salida", min_value=datetime.today())
-            is_tao = st.checkbox("¿Es familia de TAO? ⭐")
+            is_tao = st.checkbox("¿Familia TAO?")
         
-        submitted = st.form_submit_button("Guardar Reserva")
-        
-        if submitted:
+        if st.form_submit_button("Guardar"):
             if not name:
-                st.warning("Falta el nombre.")
+                st.warning("Pon un nombre")
             else:
                 new_booking = pd.DataFrame([{
                     "id": str(datetime.now().timestamp()), 
@@ -63,43 +58,20 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
                     "isTaoFamily": is_tao,
                     "checkInTime": "14:00"
                 }])
-                
                 updated_df = pd.concat([df, new_booking], ignore_index=True)
-                
                 try:
-                    # Guardamos usando el ID
-                    conn.update(spreadsheet=SHEET_ID, worksheet=HOJA_NOMBRE, data=updated_df)
-                    st.success("¡Reserva guardada!")
+                    # Guardamos en la conexión nueva
+                    conn.update(spreadsheet=SHEET_URL, data=updated_df)
+                    st.success("¡Guardado!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error al guardar: {e}")
 
 # 4. TABLA
-st.subheader("📅 Reservas Activas")
+st.subheader("📅 Reservas")
 if not df.empty and 'startDate' in df.columns:
-    df_sorted = df.sort_values(by="startDate")
-    
-    edited_df = st.data_editor(
-        df_sorted,
-        column_config={
-            "startDate": st.column_config.DateColumn("Llegada", format="DD/MM/YYYY"),
-            "endDate": st.column_config.DateColumn("Salida", format="DD/MM/YYYY"),
-            "price": st.column_config.NumberColumn("Precio", format="%d €"), 
-            "id": None
-        },
-        num_rows="dynamic",
-        hide_index=True,
-        use_container_width=True
-    )
-    
-    if not df_sorted.reset_index(drop=True).equals(edited_df.reset_index(drop=True)):
-        try:
-            conn.update(spreadsheet=SHEET_ID, worksheet=HOJA_NOMBRE, data=edited_df)
-            st.success("Tabla actualizada.")
-            st.rerun()
-        except Exception as e:
-            st.error(f"Error al actualizar: {e}")
-
-if not df.empty and 'price' in df.columns:
-    st.markdown("---")
-    st.metric("Hucha Total", f"{df['price'].sum()} €")
+    edited_df = st.data_editor(df, hide_index=True, num_rows="dynamic")
+    if not df.reset_index(drop=True).equals(edited_df.reset_index(drop=True)):
+        conn.update(spreadsheet=SHEET_URL, data=edited_df)
+        st.success("Actualizado")
+        st.rerun()
