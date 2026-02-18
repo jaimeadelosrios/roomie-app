@@ -1,12 +1,11 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 import time
 import gspread
 from google.oauth2.service_account import Credentials
 
-# Configuración básica
+# --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(page_title="RoomieSync", page_icon="🏠")
 st.title("🏠 RoomieSync: Reservas")
 
@@ -14,23 +13,44 @@ st.title("🏠 RoomieSync: Reservas")
 SHEET_ID = "1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc"
 HOJA_NOMBRE = "Reservas"
 
-# 1. CONEXIÓN PARA LEER (Aquí el intermediario sí funciona bien)
-try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    df = conn.read(spreadsheet=SHEET_ID, worksheet=HOJA_NOMBRE, ttl=0)
-except Exception:
-    df = pd.DataFrame()
+# --- 1. CONEXIÓN DIRECTA (CARGA DE DATOS) ---
+# Esta función conecta directamente con Google, sin intermediarios que fallen.
+def cargar_datos():
+    try:
+        # Recuperamos secretos y conectamos
+        mis_secretos = dict(st.secrets.connections.gsheets)
+        scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+        creds = Credentials.from_service_account_info(mis_secretos, scopes=scope)
+        client = gspread.authorize(creds)
+        
+        # Abrimos la hoja
+        sh = client.open_by_key(SHEET_ID)
+        worksheet = sh.worksheet(HOJA_NOMBRE)
+        
+        # Leemos TODOS los registros de golpe
+        data = worksheet.get_all_records()
+        df = pd.DataFrame(data)
+        
+        return df, worksheet # Devolvemos también la hoja para poder escribir luego
+    except Exception as e:
+        st.error(f"❌ Error al leer los datos: {e}")
+        return pd.DataFrame(), None
 
-# Limpieza para mostrar la tabla
+# Cargamos los datos al iniciar la app
+df, worksheet_actual = cargar_datos()
+
+# --- 2. LIMPIEZA DE DATOS (Para que se vea bonito) ---
 if not df.empty:
+    # Convertimos las fechas de texto a objetos de fecha reales para el calendario
     for col in ['startDate', 'endDate']:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
+    
+    # Aseguramos que el precio sea un número
     if 'price' in df.columns:
         df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
-    df = df.fillna("")
 
-# 3. FORMULARIO
+# --- 3. FORMULARIO DE NUEVA RESERVA ---
 with st.expander("➕ Añadir Nueva Reserva", expanded=True):
     with st.form("booking_form"):
         col1, col2 = st.columns(2)
@@ -48,8 +68,10 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
         if submitted:
             if not name:
                 st.warning("Falta el nombre.")
+            elif worksheet_actual is None:
+                st.error("No hay conexión con la hoja.")
             else:
-                # Preparamos la fila tal cual la quiere Google (todo texto o números simples)
+                # Preparamos la fila (Todo a Texto/Simple para que Google no se queje)
                 nueva_fila = [
                     str(int(datetime.now().timestamp())), # id
                     name,                                 # guestName
@@ -62,49 +84,51 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
                 ]
                 
                 try:
-                    st.info("⏳ Contactando directamente con Google...")
+                    st.info("⏳ Guardando en la nube...")
+                    # INYECCIÓN DIRECTA
+                    worksheet_actual.append_row(nueva_fila)
                     
-                    # --- AQUÍ ESTÁ LA MAGIA: CONEXIÓN PURA ---
-                    # 1. Recuperamos las llaves de tus secretos
-                    mis_secretos = dict(st.secrets.connections.gsheets)
-                    
-                    # 2. Definimos los permisos
-                    scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-                    
-                    # 3. Creamos la credencial "real"
-                    creds = Credentials.from_service_account_info(mis_secretos, scopes=scope)
-                    
-                    # 4. Autorizamos al cliente nativo (gspread)
-                    client = gspread.authorize(creds)
-                    
-                    # 5. Abrimos la hoja y escribimos
-                    sh = client.open_by_key(SHEET_ID)
-                    worksheet = sh.worksheet(HOJA_NOMBRE)
-                    
-                    # ¡INYECCIÓN DIRECTA! 💉
-                    worksheet.append_row(nueva_fila)
-                    
-                    st.success("✅ ¡CONEXIÓN DIRECTA EXITOSA! Reserva guardada.")
-                    st.cache_data.clear()
-                    time.sleep(2)
-                    st.rerun()
+                    st.success("✅ ¡Reserva guardada!")
+                    time.sleep(1)
+                    st.rerun() # Recargamos para que salga abajo inmediatamente
                     
                 except Exception as e:
-                    st.error(f"❌ Error crítico: {e}")
+                    st.error(f"❌ Error al guardar: {e}")
 
-# 4. TABLA
+# --- 4. TABLA DE RESERVAS ACTIVAS (VISUALIZACIÓN) ---
 st.subheader("📅 Reservas Activas")
 
-if st.button("🔄 Refrescar Tabla"):
-    st.cache_data.clear()
+# Botón manual por si acaso
+if st.button("🔄 Refrescar Lista"):
     st.rerun()
 
 if not df.empty and 'guestName' in df.columns:
-    st.dataframe(df, use_container_width=True, hide_index=True)
-else:
-    st.info("No veo reservas. Si acabas de guardar, dale a Refrescar.")
+    # Ordenamos por fecha de llegada
+    if 'startDate' in df.columns:
+        df = df.sort_values(by="startDate", ascending=True)
 
+    # Mostramos la tabla interactiva (estilo calendario simple)
+    st.data_editor(
+        df,
+        column_config={
+            "guestName": "Huésped",
+            "startDate": st.column_config.DateColumn("Llegada", format="DD/MM/YYYY"),
+            "endDate": st.column_config.DateColumn("Salida", format="DD/MM/YYYY"),
+            "price": st.column_config.NumberColumn("Precio", format="%d €"),
+            "guests": st.column_config.NumberColumn("Pers."),
+            "isTaoFamily": "Familia Tao",
+            "id": None,           # Ocultamos el ID
+            "checkInTime": None   # Ocultamos la hora
+        },
+        hide_index=True,
+        use_container_width=True,
+        num_rows="fixed" # Evita añadir filas vacías desde la tabla visual
+    )
+else:
+    st.info("📭 No hay reservas todavía en la hoja. ¡Crea la primera!")
+
+# --- 5. HUCHA TOTAL ---
 if not df.empty and 'price' in df.columns:
     st.markdown("---")
-    total = pd.to_numeric(df['price'], errors='coerce').sum()
-    st.metric("Hucha Total", f"{total} €")
+    total = df['price'].sum()
+    st.metric("💰 Hucha Total", f"{total} €")
