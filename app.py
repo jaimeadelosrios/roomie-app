@@ -29,7 +29,6 @@ def get_worksheet():
         return None
 
 def cargar_datos():
-    """Lee todos los datos y los convierte en DataFrame."""
     ws = get_worksheet()
     if ws:
         try:
@@ -46,13 +45,17 @@ def guardar_todo_el_dataframe(df_nuevo):
     if ws:
         try:
             df_guardar = df_nuevo.copy()
-            # Convertimos todo a texto para asegurar que Google lo acepte
+            # Limpiamos columnas calculadas si existen antes de guardar
+            if 'total_calculado' in df_guardar.columns:
+                df_guardar = df_guardar.drop(columns=['total_calculado'])
+            if 'noches' in df_guardar.columns:
+                df_guardar = df_guardar.drop(columns=['noches'])
+
+            # Convertimos fechas a texto
             df_guardar['startDate'] = df_guardar['startDate'].astype(str)
             df_guardar['endDate'] = df_guardar['endDate'].astype(str)
             
-            # Preparamos los datos
             datos_lista = [df_guardar.columns.values.tolist()] + df_guardar.values.tolist()
-            
             ws.clear()
             ws.update(datos_lista)
             return True
@@ -76,6 +79,15 @@ if not df.empty:
     
     df = df.fillna("")
 
+    # --- CÁLCULOS AUTOMÁTICOS (SOLO PARA VISUALIZAR Y HUCHA) ---
+    # Calculamos días y el total real (Días * PrecioNoche)
+    # Nota: Si la fecha salida es igual a entrada, contamos 1 noche mínimo
+    df['noches'] = (pd.to_datetime(df['endDate']) - pd.to_datetime(df['startDate'])).dt.days
+    df['noches'] = df['noches'].apply(lambda x: x if x > 0 else 1) # Mínimo 1 noche
+    
+    # Calculamos el Total Real de cada reserva
+    df['total_calculado'] = df['price'] * df['noches']
+
 # ==========================================
 # SECCIÓN 1: FORMULARIO (Precio por Noche)
 # ==========================================
@@ -87,9 +99,8 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
             start = st.date_input("Llegada", min_value=datetime.today())
             guests = st.number_input("Personas", 1, 4, 1)
         with col2:
-            # PRECIO POR NOCHE
+            # AHORA GUARDAMOS EL PRECIO POR NOCHE
             price_per_night = st.number_input("Precio por Noche (€)", 0.0, step=5.0)
-            # Salida por defecto mañana
             end = st.date_input("Salida", min_value=datetime.today() + timedelta(days=1))
             is_tao = st.checkbox("¿Es familia de TAO? ⭐")
         
@@ -101,21 +112,13 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
             elif end <= start:
                 st.error("La fecha de salida debe ser posterior a la llegada.")
             else:
-                # CÁLCULO AUTOMÁTICO DEL TOTAL
-                noches = (end - start).days
-                precio_total_calculado = price_per_night * noches
-                
-                # Mensaje informativo
-                st.info(f"ℹ️ Calculando: {noches} noches x {price_per_night}€ = {precio_total_calculado}€ Total")
-
-                # Creamos la fila nueva (diccionario bien cerrado)
                 nueva_fila = {
                     "id": str(int(datetime.now().timestamp())),
                     "guestName": name,
                     "startDate": start,
                     "endDate": end,
                     "guests": guests,
-                    "price": precio_total_calculado,
+                    "price": price_per_night, # GUARDAMOS SOLO PRECIO/NOCHE
                     "isTaoFamily": "Sí" if is_tao else "No",
                     "checkInTime": "14:00"
                 }
@@ -124,33 +127,38 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
                 if df.empty:
                     df_final = nuevo_df_temp
                 else:
-                    df_final = pd.concat([df, nuevo_df_temp], ignore_index=True)
+                    # Aseguramos que concatenamos bien sin las columnas calculadas
+                    df_limpio = df.drop(columns=['noches', 'total_calculado'], errors='ignore')
+                    df_final = pd.concat([df_limpio, nuevo_df_temp], ignore_index=True)
                 
                 with st.spinner("Guardando..."):
                     if guardar_todo_el_dataframe(df_final):
-                        st.success(f"✅ Reserva guardada. Total a cobrar: {precio_total_calculado}€")
-                        time.sleep(2)
+                        st.success("✅ Reserva guardada.")
+                        time.sleep(1)
                         st.rerun()
 
 # ==========================================
-# SECCIÓN 2: TABLA EDITABLE (CENTRO)
+# SECCIÓN 2: TABLA EDITABLE
 # ==========================================
 st.markdown("---")
 st.subheader("📝 Gestión de Reservas")
-st.caption("Doble clic para editar. Selecciona la fila y pulsa 'Suprimir' para borrar.")
 
 if not df.empty:
+    # Mostramos columnas clave.
+    # Ocultamos las calculadas de la edición directa para no confundir al guardar
+    columnas_editar = ['id', 'guestName', 'startDate', 'endDate', 'guests', 'price', 'isTaoFamily', 'checkInTime']
+    
     edited_df = st.data_editor(
-        df,
+        df[columnas_editar], # Solo pasamos las columnas reales de la BD
         column_config={
             "id": st.column_config.TextColumn("ID", disabled=True),
             "guestName": "Huésped",
             "startDate": st.column_config.DateColumn("Llegada", format="DD/MM/YYYY"),
             "endDate": st.column_config.DateColumn("Salida", format="DD/MM/YYYY"),
-            "price": st.column_config.NumberColumn("Precio Total (€)", format="%.2f €"),
+            "price": st.column_config.NumberColumn("Precio/Noche (€)", format="%.2f €"), # CLAVE: Etiqueta correcta
             "guests": st.column_config.NumberColumn("Pers."),
             "isTaoFamily": st.column_config.SelectboxColumn("Familia TAO", options=["Sí", "No"]),
-            "checkInTime": st.column_config.TextColumn("Check-in") 
+            "checkInTime": st.column_config.TextColumn("Check-in")
         },
         num_rows="dynamic",
         use_container_width=True,
@@ -169,7 +177,7 @@ else:
     st.info("La tabla está vacía.")
 
 # ==========================================
-# SECCIÓN 3: CALENDARIO (ABAJO)
+# SECCIÓN 3: CALENDARIO Y HUCHA
 # ==========================================
 st.markdown("---")
 st.subheader("📅 Calendario de Ocupación")
@@ -178,47 +186,45 @@ if not df.empty:
     try:
         eventos_calendario = []
         for index, row in df.iterrows():
-            # Colores
             es_tao = str(row.get("isTaoFamily")) == "Sí"
             color_evento = "#FFD700" if es_tao else "#3788d8"
-            border_color = "#B8860B" if es_tao else "#2C3E50"
-            text_color = "#000000" if es_tao else "#FFFFFF"
             
-            # Ajuste visual para calendario
+            # Cálculo del total para mostrar en el calendario (Tooltip)
+            noches_evento = row['noches'] if 'noches' in row else 1
+            total_evento = row['price'] * noches_evento
+            
             fecha_fin = row["endDate"]
             if isinstance(fecha_fin, (datetime, pd.Timestamp)):
                 fecha_fin = fecha_fin.date()
-            # Sumamos 1 día para que visualmente cubra la noche completa
             fecha_fin_visual = fecha_fin + timedelta(days=1)
 
             eventos_calendario.append({
-                "title": f"{row['guestName']} ({int(row.get('guests', 1))}p)",
+                "title": f"{row['guestName']} - Total: {total_evento}€", # Mostramos el total en el título
                 "start": str(row["startDate"]),
                 "end": str(fecha_fin_visual),
                 "backgroundColor": color_evento,
-                "borderColor": border_color,
-                "textColor": text_color,
+                "borderColor": color_evento,
                 "allDay": True
             })
 
         calendar_options = {
             "editable": False,
-            "headerToolbar": {
-                "left": "today prev,next",
-                "center": "title",
-                "right": "dayGridMonth,listMonth"
-            },
+            "headerToolbar": {"left": "today prev,next", "center": "title", "right": "dayGridMonth,listMonth"},
             "initialView": "dayGridMonth",
             "locale": "es",
-            "buttonText": {"today": "Hoy", "month": "Mes", "list": "Lista"}
         }
         
         calendar(events=eventos_calendario, options=calendar_options)
         
-        # Hucha Total
+        # --- HUCHA INTELIGENTE ---
         st.markdown("---")
-        total_money = df['price'].sum()
-        st.metric("💰 Hucha Total (Ingresos Previstos)", f"{total_money:,.2f} €")
+        # Sumamos la columna calculada 'total_calculado'
+        total_money = df['total_calculado'].sum()
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Reservas Activas", len(df))
+        c2.metric("Noches Totales", f"{int(df['noches'].sum())}")
+        c3.metric("💰 HUCHA REAL (Total a Cobrar)", f"{total_money:,.2f} €")
         
     except Exception as e:
-        st.error(f"Error cargando calendario: {e}")
+        st.error(f"Error visual: {e}")
