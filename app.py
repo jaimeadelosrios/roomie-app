@@ -87,8 +87,9 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
             start = st.date_input("Llegada", min_value=datetime.today())
             guests = st.number_input("Personas", 1, 4, 1)
         with col2:
-            # CAMBIO: Ahora pedimos PRECIO POR NOCHE
+            # PRECIO POR NOCHE
             price_per_night = st.number_input("Precio por Noche (€)", 0.0, step=5.0)
+            # Salida por defecto mañana
             end = st.date_input("Salida", min_value=datetime.today() + timedelta(days=1))
             is_tao = st.checkbox("¿Es familia de TAO? ⭐")
         
@@ -101,13 +102,123 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
                 st.error("La fecha de salida debe ser posterior a la llegada.")
             else:
                 # CÁLCULO AUTOMÁTICO DEL TOTAL
-                # (Fecha Fin - Fecha Inicio).days ya hace la resta correcta de noches
                 noches = (end - start).days
                 precio_total_calculado = price_per_night * noches
                 
-                st.toast(f"ℹ️ Calculando: {noches} noches x {price_per_night}€ = {precio_total_calculado}€ Total")
+                # Mensaje informativo
+                st.info(f"ℹ️ Calculando: {noches} noches x {price_per_night}€ = {precio_total_calculado}€ Total")
 
+                # Creamos la fila nueva (diccionario bien cerrado)
                 nueva_fila = {
                     "id": str(int(datetime.now().timestamp())),
                     "guestName": name,
                     "startDate": start,
+                    "endDate": end,
+                    "guests": guests,
+                    "price": precio_total_calculado,
+                    "isTaoFamily": "Sí" if is_tao else "No",
+                    "checkInTime": "14:00"
+                }
+                
+                nuevo_df_temp = pd.DataFrame([nueva_fila])
+                if df.empty:
+                    df_final = nuevo_df_temp
+                else:
+                    df_final = pd.concat([df, nuevo_df_temp], ignore_index=True)
+                
+                with st.spinner("Guardando..."):
+                    if guardar_todo_el_dataframe(df_final):
+                        st.success(f"✅ Reserva guardada. Total a cobrar: {precio_total_calculado}€")
+                        time.sleep(2)
+                        st.rerun()
+
+# ==========================================
+# SECCIÓN 2: TABLA EDITABLE (CENTRO)
+# ==========================================
+st.markdown("---")
+st.subheader("📝 Gestión de Reservas")
+st.caption("Doble clic para editar. Selecciona la fila y pulsa 'Suprimir' para borrar.")
+
+if not df.empty:
+    edited_df = st.data_editor(
+        df,
+        column_config={
+            "id": st.column_config.TextColumn("ID", disabled=True),
+            "guestName": "Huésped",
+            "startDate": st.column_config.DateColumn("Llegada", format="DD/MM/YYYY"),
+            "endDate": st.column_config.DateColumn("Salida", format="DD/MM/YYYY"),
+            "price": st.column_config.NumberColumn("Precio Total (€)", format="%.2f €"),
+            "guests": st.column_config.NumberColumn("Pers."),
+            "isTaoFamily": st.column_config.SelectboxColumn("Familia TAO", options=["Sí", "No"]),
+            "checkInTime": st.column_config.TextColumn("Check-in") 
+        },
+        num_rows="dynamic",
+        use_container_width=True,
+        key="editor_principal"
+    )
+
+    col_btn, _ = st.columns([1, 4])
+    with col_btn:
+        if st.button("💾 GUARDAR CAMBIOS"):
+            with st.spinner("Sincronizando..."):
+                if guardar_todo_el_dataframe(edited_df):
+                    st.success("Cambios guardados.")
+                    time.sleep(1)
+                    st.rerun()
+else:
+    st.info("La tabla está vacía.")
+
+# ==========================================
+# SECCIÓN 3: CALENDARIO (ABAJO)
+# ==========================================
+st.markdown("---")
+st.subheader("📅 Calendario de Ocupación")
+
+if not df.empty:
+    try:
+        eventos_calendario = []
+        for index, row in df.iterrows():
+            # Colores
+            es_tao = str(row.get("isTaoFamily")) == "Sí"
+            color_evento = "#FFD700" if es_tao else "#3788d8"
+            border_color = "#B8860B" if es_tao else "#2C3E50"
+            text_color = "#000000" if es_tao else "#FFFFFF"
+            
+            # Ajuste visual para calendario
+            fecha_fin = row["endDate"]
+            if isinstance(fecha_fin, (datetime, pd.Timestamp)):
+                fecha_fin = fecha_fin.date()
+            # Sumamos 1 día para que visualmente cubra la noche completa
+            fecha_fin_visual = fecha_fin + timedelta(days=1)
+
+            eventos_calendario.append({
+                "title": f"{row['guestName']} ({int(row.get('guests', 1))}p)",
+                "start": str(row["startDate"]),
+                "end": str(fecha_fin_visual),
+                "backgroundColor": color_evento,
+                "borderColor": border_color,
+                "textColor": text_color,
+                "allDay": True
+            })
+
+        calendar_options = {
+            "editable": False,
+            "headerToolbar": {
+                "left": "today prev,next",
+                "center": "title",
+                "right": "dayGridMonth,listMonth"
+            },
+            "initialView": "dayGridMonth",
+            "locale": "es",
+            "buttonText": {"today": "Hoy", "month": "Mes", "list": "Lista"}
+        }
+        
+        calendar(events=eventos_calendario, options=calendar_options)
+        
+        # Hucha Total
+        st.markdown("---")
+        total_money = df['price'].sum()
+        st.metric("💰 Hucha Total (Ingresos Previstos)", f"{total_money:,.2f} €")
+        
+    except Exception as e:
+        st.error(f"Error cargando calendario: {e}")
