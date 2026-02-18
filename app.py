@@ -3,6 +3,8 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 import time
+import gspread
+from google.oauth2.service_account import Credentials
 
 # Configuración básica
 st.set_page_config(page_title="RoomieSync", page_icon="🏠")
@@ -12,24 +14,15 @@ st.title("🏠 RoomieSync: Reservas")
 SHEET_ID = "1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc"
 HOJA_NOMBRE = "Reservas"
 
-# 1. CONEXIÓN (La de siempre)
+# 1. CONEXIÓN PARA LEER (Aquí el intermediario sí funciona bien)
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-except Exception as e:
-    st.error(f"⚠️ Error de conexión: {e}")
-    st.stop()
-
-# 2. LECTURA (Solo para mostrar la tabla abajo)
-try:
-    # Leemos la hoja para mostrarla
     df = conn.read(spreadsheet=SHEET_ID, worksheet=HOJA_NOMBRE, ttl=0)
-    # Si da el falso error 200, creamos tabla vacía
 except Exception:
     df = pd.DataFrame()
 
-# Limpieza básica para la visualización
+# Limpieza para mostrar la tabla
 if not df.empty:
-    # Convertimos a formato fecha y número para que se vea bonito
     for col in ['startDate', 'endDate']:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
@@ -56,41 +49,48 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
             if not name:
                 st.warning("Falta el nombre.")
             else:
-                # --- AQUÍ ESTÁ EL CAMBIO MÁGICO ---
-                # En vez de crear DataFrames complejos, preparamos una lista simple
-                # El orden debe coincidir EXACTO con tus columnas en Excel:
-                # A: id, B: guestName, C: startDate, D: endDate, E: guests, F: price, G: isTaoFamily, H: checkInTime
-                
+                # Preparamos la fila tal cual la quiere Google (todo texto o números simples)
                 nueva_fila = [
                     str(int(datetime.now().timestamp())), # id
                     name,                                 # guestName
-                    str(start),                           # startDate (Texto)
-                    str(end),                             # endDate (Texto)
-                    guests,                               # guests
-                    price,                                # price
+                    str(start),                           # startDate
+                    str(end),                             # endDate
+                    int(guests),                          # guests
+                    float(price),                         # price
                     "Sí" if is_tao else "No",             # isTaoFamily
                     "14:00"                               # checkInTime
                 ]
                 
                 try:
-                    st.info("⏳ Enviando datos a Google...")
+                    st.info("⏳ Contactando directamente con Google...")
                     
-                    # Usamos el cliente interno (gspread) para escribir DIRECTAMENTE
-                    # Esto se salta los errores de la librería Streamlit
-                    client = conn.client
+                    # --- AQUÍ ESTÁ LA MAGIA: CONEXIÓN PURA ---
+                    # 1. Recuperamos las llaves de tus secretos
+                    mis_secretos = dict(st.secrets.connections.gsheets)
+                    
+                    # 2. Definimos los permisos
+                    scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+                    
+                    # 3. Creamos la credencial "real"
+                    creds = Credentials.from_service_account_info(mis_secretos, scopes=scope)
+                    
+                    # 4. Autorizamos al cliente nativo (gspread)
+                    client = gspread.authorize(creds)
+                    
+                    # 5. Abrimos la hoja y escribimos
                     sh = client.open_by_key(SHEET_ID)
                     worksheet = sh.worksheet(HOJA_NOMBRE)
                     
-                    # ¡INYECCIÓN DIRECTA!
+                    # ¡INYECCIÓN DIRECTA! 💉
                     worksheet.append_row(nueva_fila)
                     
-                    st.success("✅ ¡Guardado Confirmado!")
-                    st.cache_data.clear() # Limpiamos memoria
-                    time.sleep(1)
-                    st.rerun()            # Recargamos
+                    st.success("✅ ¡CONEXIÓN DIRECTA EXITOSA! Reserva guardada.")
+                    st.cache_data.clear()
+                    time.sleep(2)
+                    st.rerun()
                     
                 except Exception as e:
-                    st.error(f"❌ Error al guardar: {e}")
+                    st.error(f"❌ Error crítico: {e}")
 
 # 4. TABLA
 st.subheader("📅 Reservas Activas")
@@ -100,13 +100,11 @@ if st.button("🔄 Refrescar Tabla"):
     st.rerun()
 
 if not df.empty and 'guestName' in df.columns:
-    # Mostramos la tabla tal cual viene de Google
     st.dataframe(df, use_container_width=True, hide_index=True)
 else:
-    st.info("No veo reservas. Si acabas de guardar una, dale al botón de Refrescar.")
+    st.info("No veo reservas. Si acabas de guardar, dale a Refrescar.")
 
 if not df.empty and 'price' in df.columns:
     st.markdown("---")
-    # Truco para sumar precios aunque vengan como texto
     total = pd.to_numeric(df['price'], errors='coerce').sum()
     st.metric("Hucha Total", f"{total} €")
