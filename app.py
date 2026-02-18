@@ -12,32 +12,29 @@ st.title("🏠 RoomieSync: Reservas")
 SHEET_ID = "1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc"
 HOJA_NOMBRE = "Reservas"
 
-# Botón de emergencia
-if st.button("🔄 Refrescar Datos"):
-    st.cache_data.clear()
-    st.rerun()
-
-# 1. CONEXIÓN
+# 1. CONEXIÓN (La de siempre)
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    df = conn.read(spreadsheet=SHEET_ID, worksheet=HOJA_NOMBRE, ttl=0)
 except Exception as e:
-    # Gestión del falso error 200
-    if "200" in str(e) or "Response" in str(e):
-        df = pd.DataFrame(columns=['id', 'guestName', 'startDate', 'endDate', 'guests', 'price', 'isTaoFamily', 'checkInTime'])
-    else:
-        st.error(f"⚠️ Error de conexión: {e}")
-        st.stop()
+    st.error(f"⚠️ Error de conexión: {e}")
+    st.stop()
 
-# 2. LIMPIEZA INICIAL
-if df.empty:
-    if 'guestName' not in df.columns:
-        df = pd.DataFrame(columns=['id', 'guestName', 'startDate', 'endDate', 'guests', 'price', 'isTaoFamily', 'checkInTime'])
-else:
-    # Aseguramos tipos al leer
+# 2. LECTURA (Solo para mostrar la tabla abajo)
+try:
+    # Leemos la hoja para mostrarla
+    df = conn.read(spreadsheet=SHEET_ID, worksheet=HOJA_NOMBRE, ttl=0)
+    # Si da el falso error 200, creamos tabla vacía
+except Exception:
+    df = pd.DataFrame()
+
+# Limpieza básica para la visualización
+if not df.empty:
+    # Convertimos a formato fecha y número para que se vea bonito
     for col in ['startDate', 'endDate']:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
+    if 'price' in df.columns:
+        df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
     df = df.fillna("")
 
 # 3. FORMULARIO
@@ -59,88 +56,57 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
             if not name:
                 st.warning("Falta el nombre.")
             else:
-                # 1. Creamos la fila nueva
-                new_booking = pd.DataFrame([{
-                    "id": str(int(datetime.now().timestamp())), # ID simplificado
-                    "guestName": name,
-                    "startDate": start,
-                    "endDate": end,
-                    "guests": guests,
-                    "price": price,
-                    "isTaoFamily": is_tao,
-                    "checkInTime": "14:00"
-                }])
+                # --- AQUÍ ESTÁ EL CAMBIO MÁGICO ---
+                # En vez de crear DataFrames complejos, preparamos una lista simple
+                # El orden debe coincidir EXACTO con tus columnas en Excel:
+                # A: id, B: guestName, C: startDate, D: endDate, E: guests, F: price, G: isTaoFamily, H: checkInTime
                 
-                # 2. Unimos con lo existente
-                if df.empty:
-                    updated_df = new_booking
-                else:
-                    updated_df = pd.concat([df, new_booking], ignore_index=True)
+                nueva_fila = [
+                    str(int(datetime.now().timestamp())), # id
+                    name,                                 # guestName
+                    str(start),                           # startDate (Texto)
+                    str(end),                             # endDate (Texto)
+                    guests,                               # guests
+                    price,                                # price
+                    "Sí" if is_tao else "No",             # isTaoFamily
+                    "14:00"                               # checkInTime
+                ]
                 
-                # --- 🔴 TRUCO ANTI-FANTASMA: CONVERTIR FECHAS A TEXTO ---
-                # Esto obliga a Google a guardar el dato sí o sí
-                updated_df['startDate'] = updated_df['startDate'].astype(str)
-                updated_df['endDate'] = updated_df['endDate'].astype(str)
-                # --------------------------------------------------------
-
                 try:
-                    conn.update(spreadsheet=SHEET_ID, worksheet=HOJA_NOMBRE, data=updated_df)
-                    st.cache_data.clear()
-                    st.success("¡Guardado! (Refrescando...)")
-                    time.sleep(2)
-                    st.rerun()
+                    st.info("⏳ Enviando datos a Google...")
+                    
+                    # Usamos el cliente interno (gspread) para escribir DIRECTAMENTE
+                    # Esto se salta los errores de la librería Streamlit
+                    client = conn.client
+                    sh = client.open_by_key(SHEET_ID)
+                    worksheet = sh.worksheet(HOJA_NOMBRE)
+                    
+                    # ¡INYECCIÓN DIRECTA!
+                    worksheet.append_row(nueva_fila)
+                    
+                    st.success("✅ ¡Guardado Confirmado!")
+                    st.cache_data.clear() # Limpiamos memoria
+                    time.sleep(1)
+                    st.rerun()            # Recargamos
+                    
                 except Exception as e:
-                    # Si da el error 200, asumimos éxito
-                    if "200" in str(e):
-                        st.cache_data.clear()
-                        st.success("¡Guardado OK! (Refrescando...)")
-                        time.sleep(2)
-                        st.rerun()
-                    else:
-                        st.error(f"Error al guardar: {e}")
+                    st.error(f"❌ Error al guardar: {e}")
 
 # 4. TABLA
 st.subheader("📅 Reservas Activas")
 
-if not df.empty and 'startDate' in df.columns:
-    # Ordenamos y mostramos
-    try:
-        df_sorted = df.sort_values(by="startDate", ascending=True)
-        
-        edited_df = st.data_editor(
-            df_sorted,
-            column_config={
-                "startDate": st.column_config.DateColumn("Llegada", format="YYYY-MM-DD"),
-                "endDate": st.column_config.DateColumn("Salida", format="YYYY-MM-DD"),
-                "price": st.column_config.NumberColumn("Precio", format="%d €"), 
-                "id": None
-            },
-            num_rows="dynamic",
-            hide_index=True,
-            use_container_width=True
-        )
-        
-        # Guardado manual desde la tabla (también con protección de fechas)
-        if not df_sorted.reset_index(drop=True).equals(edited_df.reset_index(drop=True)):
-            # Convertimos a string antes de enviar
-            edited_df['startDate'] = edited_df['startDate'].astype(str)
-            edited_df['endDate'] = edited_df['endDate'].astype(str)
-            
-            try:
-                conn.update(spreadsheet=SHEET_ID, worksheet=HOJA_NOMBRE, data=edited_df)
-                st.cache_data.clear()
-                st.success("Tabla actualizada.")
-                time.sleep(1)
-                st.rerun()
-            except Exception as e:
-                if "200" in str(e):
-                     st.cache_data.clear()
-                     st.rerun()
-    except Exception as e:
-        st.error(f"Error visualizando tabla: {e}")
+if st.button("🔄 Refrescar Tabla"):
+    st.cache_data.clear()
+    st.rerun()
+
+if not df.empty and 'guestName' in df.columns:
+    # Mostramos la tabla tal cual viene de Google
+    st.dataframe(df, use_container_width=True, hide_index=True)
 else:
-    st.info("No hay reservas todavía. ¡Estrena la lista!")
+    st.info("No veo reservas. Si acabas de guardar una, dale al botón de Refrescar.")
 
 if not df.empty and 'price' in df.columns:
     st.markdown("---")
-    st.metric("Hucha Total", f"{df['price'].sum()} €")
+    # Truco para sumar precios aunque vengan como texto
+    total = pd.to_numeric(df['price'], errors='coerce').sum()
+    st.metric("Hucha Total", f"{total} €")
