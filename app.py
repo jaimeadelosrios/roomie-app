@@ -4,55 +4,176 @@ from datetime import datetime
 import time
 import gspread
 from google.oauth2.service_account import Credentials
+import plotly.express as px  # Librería para el calendario visual
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
-st.set_page_config(page_title="RoomieSync", page_icon="🏠")
-st.title("🏠 RoomieSync: Reservas")
+st.set_page_config(page_title="RoomieSync", page_icon="🏠", layout="wide") # Layout wide para que quepa el calendario
+st.title("🏠 RoomieSync: Gestión Total")
 
 # --- TUS DATOS ---
 SHEET_ID = "1rG8NJjJDZvcpnmTzDQa5iNx8hoLaxw5VHgR2qomFMFc"
 HOJA_NOMBRE = "Reservas"
 
-# --- 1. CONEXIÓN DIRECTA (CARGA DE DATOS) ---
-# Esta función conecta directamente con Google, sin intermediarios que fallen.
-def cargar_datos():
+# --- FUNCIONES DE CONEXIÓN ---
+def get_worksheet():
+    """Conecta con Google y devuelve la hoja de trabajo."""
     try:
-        # Recuperamos secretos y conectamos
         mis_secretos = dict(st.secrets.connections.gsheets)
         scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
         creds = Credentials.from_service_account_info(mis_secretos, scopes=scope)
         client = gspread.authorize(creds)
-        
-        # Abrimos la hoja
         sh = client.open_by_key(SHEET_ID)
-        worksheet = sh.worksheet(HOJA_NOMBRE)
-        
-        # Leemos TODOS los registros de golpe
-        data = worksheet.get_all_records()
-        df = pd.DataFrame(data)
-        
-        return df, worksheet # Devolvemos también la hoja para poder escribir luego
+        return sh.worksheet(HOJA_NOMBRE)
     except Exception as e:
-        st.error(f"❌ Error al leer los datos: {e}")
-        return pd.DataFrame(), None
+        st.error(f"❌ Error de conexión: {e}")
+        return None
 
-# Cargamos los datos al iniciar la app
-df, worksheet_actual = cargar_datos()
+def cargar_datos():
+    """Lee todos los datos y los convierte en DataFrame."""
+    ws = get_worksheet()
+    if ws:
+        data = ws.get_all_records()
+        df = pd.DataFrame(data)
+        return df
+    return pd.DataFrame()
 
-# --- 2. LIMPIEZA DE DATOS (Para que se vea bonito) ---
+def guardar_todo_el_dataframe(df_nuevo):
+    """
+    ⚠️ IMPORTANTE: Esta función BORRA la hoja y la REESCRIBE con los datos nuevos.
+    Es la única forma de permitir ediciones y borrados complejos de forma sencilla.
+    """
+    ws = get_worksheet()
+    if ws:
+        try:
+            # 1. Convertimos fechas a texto (string) para que Google no se queje
+            df_guardar = df_nuevo.copy()
+            df_guardar['startDate'] = df_guardar['startDate'].astype(str)
+            df_guardar['endDate'] = df_guardar['endDate'].astype(str)
+            
+            # 2. Preparamos los datos (Lista de Listas)
+            # Incluimos los encabezados
+            datos_lista = [df_guardar.columns.values.tolist()] + df_guardar.values.tolist()
+            
+            # 3. Borramos y Escribimos
+            ws.clear() # Limpia todo
+            ws.update(datos_lista) # Escribe lo nuevo
+            return True
+        except Exception as e:
+            st.error(f"Error al actualizar la hoja: {e}")
+            return False
+    return False
+
+# --- CARGA INICIAL ---
+df = cargar_datos()
+
+# Procesamiento de tipos de datos (Fechas y Números)
 if not df.empty:
-    # Convertimos las fechas de texto a objetos de fecha reales para el calendario
     for col in ['startDate', 'endDate']:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
-    
-    # Aseguramos que el precio sea un número
     if 'price' in df.columns:
         df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
+    if 'guests' in df.columns:
+        df['guests'] = pd.to_numeric(df['guests'], errors='coerce').fillna(1)
+    
+    # Aseguramos que todas las columnas existan
+    required_cols = ['id', 'guestName', 'startDate', 'endDate', 'guests', 'price', 'isTaoFamily', 'checkInTime']
+    for col in required_cols:
+        if col not in df.columns:
+            df[col] = ""
 
-# --- 3. FORMULARIO DE NUEVA RESERVA ---
-with st.expander("➕ Añadir Nueva Reserva", expanded=True):
-    with st.form("booking_form"):
+# --- INTERFAZ CON PESTAÑAS ---
+tab1, tab2, tab3 = st.tabs(["📅 Calendario Visual", "📝 Tabla (Editar/Borrar)", "➕ Añadir Reserva"])
+
+# ==========================================
+# PESTAÑA 1: CALENDARIO VISUAL (Gantt)
+# ==========================================
+with tab1:
+    st.subheader("Ocupación Visual")
+    if not df.empty:
+        # Preparamos datos para el gráfico
+        df_chart = df.copy()
+        # Plotly necesita formato datetime completo, no solo date
+        df_chart['Inicio'] = pd.to_datetime(df_chart['startDate'])
+        df_chart['Fin'] = pd.to_datetime(df_chart['endDate'])
+        
+        # Colores: Si es familia TAO sale en Oro, si no, colores automáticos por nombre
+        # Creamos una columna de color
+        df_chart['Tipo'] = df_chart.apply(lambda x: 'Familia TAO ⭐' if str(x['isTaoFamily']) == "Sí" else x['guestName'], axis=1)
+
+        fig = px.timeline(
+            df_chart, 
+            x_start="Inicio", 
+            x_end="Fin", 
+            y="guestName", # En el eje Y ponemos los nombres
+            color="Tipo",  # Coloreamos por tipo o nombre
+            title="Calendario de Reservas",
+            labels={"guestName": "Huésped"},
+            height=400
+        )
+        
+        # Ajustes visuales para que parezca un calendario
+        fig.update_yaxes(autorange="reversed") # Para que el primero salga arriba
+        fig.update_layout(xaxis_title="Fechas", yaxis_title="")
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Métricas rápidas
+        c1, c2 = st.columns(2)
+        c1.metric("Reservas Totales", len(df))
+        total_money = df['price'].sum()
+        c2.metric("Hucha Estimada", f"{total_money} €")
+        
+    else:
+        st.info("No hay datos para mostrar en el calendario.")
+
+# ==========================================
+# PESTAÑA 2: TABLA EDITOR (CRUD)
+# ==========================================
+with tab2:
+    st.header("Gestión de Reservas")
+    st.info("💡 **Instrucciones:** Puedes editar cualquier celda directamente. Para **BORRAR**, selecciona las filas a la izquierda y pulsa la tecla 'Suprimir' (Del) o usa el icono de papelera que aparecerá.")
+
+    if not df.empty:
+        # Mostramos el editor
+        # num_rows="dynamic" permite añadir y borrar filas
+        edited_df = st.data_editor(
+            df,
+            column_config={
+                "id": st.column_config.TextColumn("ID", disabled=True), # Protegemos el ID
+                "guestName": "Nombre Huésped",
+                "startDate": st.column_config.DateColumn("Llegada", format="DD/MM/YYYY"),
+                "endDate": st.column_config.DateColumn("Salida", format="DD/MM/YYYY"),
+                "price": st.column_config.NumberColumn("Precio (€)", format="%.2f €"),
+                "guests": st.column_config.NumberColumn("Pers.", min_value=1, max_value=10),
+                "isTaoFamily": st.column_config.SelectboxColumn("¿Familia TAO?", options=["Sí", "No"]),
+                "checkInTime": st.column_config.TimeColumn("Hora Check-in")
+            },
+            num_rows="dynamic", # ¡ESTO PERMITE BORRAR Y AÑADIR!
+            use_container_width=True,
+            key="editor_reservas"
+        )
+
+        # Botón para GUARDAR LOS CAMBIOS
+        st.write("")
+        col_btn, _ = st.columns([1, 4])
+        with col_btn:
+            if st.button("💾 GUARDAR CAMBIOS EN GOOGLE", type="primary"):
+                with st.spinner("Sincronizando con la nube..."):
+                    exito = guardar_todo_el_dataframe(edited_df)
+                    if exito:
+                        st.success("¡Base de datos actualizada correctamente!")
+                        time.sleep(1)
+                        st.rerun()
+    else:
+        st.warning("La tabla está vacía.")
+
+# ==========================================
+# PESTAÑA 3: FORMULARIO ORIGINAL
+# ==========================================
+with tab3:
+    st.subheader("Nueva Reserva Rápida")
+    with st.form("booking_form_tab"):
         col1, col2 = st.columns(2)
         with col1:
             name = st.text_input("Nombre del Huésped")
@@ -63,72 +184,33 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
             end = st.date_input("Salida", min_value=datetime.today())
             is_tao = st.checkbox("¿Es familia de TAO? ⭐")
         
-        submitted = st.form_submit_button("Guardar Reserva")
+        submitted = st.form_submit_button("Añadir Reserva")
         
         if submitted:
             if not name:
                 st.warning("Falta el nombre.")
-            elif worksheet_actual is None:
-                st.error("No hay conexión con la hoja.")
             else:
-                # Preparamos la fila (Todo a Texto/Simple para que Google no se queje)
-                nueva_fila = [
-                    str(int(datetime.now().timestamp())), # id
-                    name,                                 # guestName
-                    str(start),                           # startDate
-                    str(end),                             # endDate
-                    int(guests),                          # guests
-                    float(price),                         # price
-                    "Sí" if is_tao else "No",             # isTaoFamily
-                    "14:00"                               # checkInTime
-                ]
+                nueva_fila = {
+                    "id": str(int(datetime.now().timestamp())),
+                    "guestName": name,
+                    "startDate": start, # Objeto date
+                    "endDate": end,     # Objeto date
+                    "guests": guests,
+                    "price": price,
+                    "isTaoFamily": "Sí" if is_tao else "No",
+                    "checkInTime": "14:00"
+                }
                 
-                try:
-                    st.info("⏳ Guardando en la nube...")
-                    # INYECCIÓN DIRECTA
-                    worksheet_actual.append_row(nueva_fila)
-                    
-                    st.success("✅ ¡Reserva guardada!")
+                # Añadimos la fila al DF actual y guardamos todo
+                # Es más seguro reescribir todo para mantener consistencia
+                nuevo_df_temp = pd.DataFrame([nueva_fila])
+                if df.empty:
+                    df_final = nuevo_df_temp
+                else:
+                    df_final = pd.concat([df, nuevo_df_temp], ignore_index=True)
+                
+                with st.spinner("Guardando..."):
+                    guardar_todo_el_dataframe(df_final)
+                    st.success("Reserva añadida.")
                     time.sleep(1)
-                    st.rerun() # Recargamos para que salga abajo inmediatamente
-                    
-                except Exception as e:
-                    st.error(f"❌ Error al guardar: {e}")
-
-# --- 4. TABLA DE RESERVAS ACTIVAS (VISUALIZACIÓN) ---
-st.subheader("📅 Reservas Activas")
-
-# Botón manual por si acaso
-if st.button("🔄 Refrescar Lista"):
-    st.rerun()
-
-if not df.empty and 'guestName' in df.columns:
-    # Ordenamos por fecha de llegada
-    if 'startDate' in df.columns:
-        df = df.sort_values(by="startDate", ascending=True)
-
-    # Mostramos la tabla interactiva (estilo calendario simple)
-    st.data_editor(
-        df,
-        column_config={
-            "guestName": "Huésped",
-            "startDate": st.column_config.DateColumn("Llegada", format="DD/MM/YYYY"),
-            "endDate": st.column_config.DateColumn("Salida", format="DD/MM/YYYY"),
-            "price": st.column_config.NumberColumn("Precio", format="%d €"),
-            "guests": st.column_config.NumberColumn("Pers."),
-            "isTaoFamily": "Familia Tao",
-            "id": None,           # Ocultamos el ID
-            "checkInTime": None   # Ocultamos la hora
-        },
-        hide_index=True,
-        use_container_width=True,
-        num_rows="fixed" # Evita añadir filas vacías desde la tabla visual
-    )
-else:
-    st.info("📭 No hay reservas todavía en la hoja. ¡Crea la primera!")
-
-# --- 5. HUCHA TOTAL ---
-if not df.empty and 'price' in df.columns:
-    st.markdown("---")
-    total = df['price'].sum()
-    st.metric("💰 Hucha Total", f"{total} €")
+                    st.rerun()
