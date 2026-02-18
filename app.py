@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 import gspread
 from google.oauth2.service_account import Credentials
-import plotly.express as px
+from streamlit_calendar import calendar # ¡Nueva herramienta!
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(page_title="RoomieSync", page_icon="🏠", layout="wide")
@@ -41,7 +41,7 @@ def cargar_datos():
     return pd.DataFrame()
 
 def guardar_todo_el_dataframe(df_nuevo):
-    """BORRA la hoja y la REESCRIBE con los datos nuevos (para ediciones)."""
+    """BORRA la hoja y la REESCRIBE con los datos nuevos."""
     ws = get_worksheet()
     if ws:
         try:
@@ -74,7 +74,6 @@ if not df.empty:
     if 'guests' in df.columns:
         df['guests'] = pd.to_numeric(df['guests'], errors='coerce').fillna(1)
     
-    # Rellenamos huecos para evitar errores
     df = df.fillna("")
 
 # ==========================================
@@ -109,7 +108,6 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
                     "checkInTime": "14:00"
                 }
                 
-                # Añadimos y guardamos
                 nuevo_df_temp = pd.DataFrame([nueva_fila])
                 if df.empty:
                     df_final = nuevo_df_temp
@@ -126,8 +124,8 @@ with st.expander("➕ Añadir Nueva Reserva", expanded=True):
 # SECCIÓN 2: TABLA EDITABLE (CENTRO)
 # ==========================================
 st.markdown("---")
-st.subheader("📝 Gestión de Reservas (Editar / Borrar)")
-st.caption("Haz doble clic para editar. Selecciona la fila izquierda y pulsa 'Suprimir' para borrar.")
+st.subheader("📝 Gestión de Reservas")
+st.caption("Doble clic para editar. Selecciona la fila y pulsa 'Suprimir' para borrar.")
 
 if not df.empty:
     edited_df = st.data_editor(
@@ -140,7 +138,6 @@ if not df.empty:
             "price": st.column_config.NumberColumn("Precio", format="%.2f €"),
             "guests": st.column_config.NumberColumn("Pers."),
             "isTaoFamily": st.column_config.SelectboxColumn("Familia TAO", options=["Sí", "No"]),
-            # CAMBIO CLAVE: Usamos TextColumn para evitar el error de TimeColumn
             "checkInTime": st.column_config.TextColumn("Check-in") 
         },
         num_rows="dynamic",
@@ -148,49 +145,76 @@ if not df.empty:
         key="editor_principal"
     )
 
-    # Botón de Guardar Cambios
     col_btn, _ = st.columns([1, 4])
     with col_btn:
-        if st.button("💾 GUARDAR CAMBIOS DE TABLA"):
+        if st.button("💾 GUARDAR CAMBIOS"):
             with st.spinner("Sincronizando..."):
                 if guardar_todo_el_dataframe(edited_df):
                     st.success("Cambios guardados.")
                     time.sleep(1)
                     st.rerun()
 else:
-    st.info("La tabla está vacía. Añade una reserva arriba.")
+    st.info("La tabla está vacía.")
 
 # ==========================================
-# SECCIÓN 3: GRÁFICO (ABAJO)
+# SECCIÓN 3: CALENDARIO (ABAJO)
 # ==========================================
 st.markdown("---")
-st.subheader("📅 Ocupación Visual")
+st.subheader("📅 Calendario de Ocupación")
 
 if not df.empty:
     try:
-        df_chart = df.copy()
-        df_chart['Inicio'] = pd.to_datetime(df_chart['startDate'])
-        df_chart['Fin'] = pd.to_datetime(df_chart['endDate'])
+        # Preparamos los eventos para el calendario
+        eventos_calendario = []
         
-        # Color diferenciado
-        df_chart['Tipo'] = df_chart.apply(lambda x: 'Familia TAO ⭐' if str(x['isTaoFamily']) == "Sí" else 'Huésped', axis=1)
+        for index, row in df.iterrows():
+            # Color: Dorado si es Tao, Azul si es normal
+            color_evento = "#FFD700" if str(row.get("isTaoFamily")) == "Sí" else "#3788d8"
+            border_color = "#B8860B" if str(row.get("isTaoFamily")) == "Sí" else "#2C3E50"
+            text_color = "#000000" if str(row.get("isTaoFamily")) == "Sí" else "#FFFFFF"
+            
+            # Ajuste de fechas: Los calendarios web suelen cortar el último día
+            # Así que sumamos 1 día a la fecha final para que se vea completa visualmente
+            fecha_fin = row["endDate"]
+            if isinstance(fecha_fin, (datetime, pd.Timestamp)):
+                fecha_fin = fecha_fin.date()
+            # Truco visual: sumamos 1 día al final para que la barra cubra hasta el final del día
+            fecha_fin_visual = fecha_fin + timedelta(days=1)
 
-        fig = px.timeline(
-            df_chart, 
-            x_start="Inicio", 
-            x_end="Fin", 
-            y="guestName", 
-            color="Tipo",
-            title="Calendario",
-            color_discrete_map={'Familia TAO ⭐': '#FFD700', 'Huésped': '#636EFA'}
-        )
+            eventos_calendario.append({
+                "title": f"{row['guestName']} ({int(row.get('guests', 1))}p)",
+                "start": str(row["startDate"]),
+                "end": str(fecha_fin_visual),
+                "backgroundColor": color_evento,
+                "borderColor": border_color,
+                "textColor": text_color,
+                "allDay": True
+            })
+
+        # Configuración del calendario
+        calendar_options = {
+            "editable": False, # Solo lectura visual
+            "headerToolbar": {
+                "left": "today prev,next",
+                "center": "title",
+                "right": "dayGridMonth,listMonth"
+            },
+            "initialView": "dayGridMonth",
+            "locale": "es", # Español
+            "buttonText": {
+                "today": "Hoy",
+                "month": "Mes",
+                "list": "Lista"
+            }
+        }
         
-        fig.update_yaxes(autorange="reversed")
-        st.plotly_chart(fig, use_container_width=True)
+        # Pintamos el calendario
+        calendar(events=eventos_calendario, options=calendar_options)
         
-        # Totales
+        # Hucha
+        st.markdown("---")
         total_money = df['price'].sum()
         st.metric("💰 Hucha Total", f"{total_money} €")
         
     except Exception as e:
-        st.warning(f"No se pudo generar el gráfico aún (faltan datos o fechas válidas).")
+        st.error(f"Error cargando calendario: {e}")
